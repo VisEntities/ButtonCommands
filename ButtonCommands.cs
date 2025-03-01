@@ -29,8 +29,11 @@ namespace Oxide.Plugins
             [JsonProperty("Version")]
             public string Version { get; set; }
 
-            [JsonProperty("Disable Power Output")]
-            public bool DisablePowerOutput { get; set; }
+            [JsonProperty("Require Button Powered")]
+            public bool RequireButtonPowered { get; set; }
+
+            [JsonProperty("Disable Power Output On Press")]
+            public bool DisablePowerOutputOnPress { get; set; }
 
             [JsonProperty("Run Random Command")]
             public bool RunRandomCommand { get; set; }
@@ -88,7 +91,8 @@ namespace Oxide.Plugins
             return new Configuration
             {
                 Version = Version.ToString(),
-                DisablePowerOutput = true,
+                RequireButtonPowered = true,
+                DisablePowerOutputOnPress = true,
                 RunRandomCommand = false,
                 CommandsToRun = new List<CommandConfig>
                 {
@@ -131,6 +135,9 @@ namespace Oxide.Plugins
             if (player == null)
                 return null;
 
+            if (_config.RequireButtonPowered && !button.IsOn())
+                return null;
+
             if (_config.RunRandomCommand && _config.CommandsToRun.Count > 0)
             {
                 var cmd = _config.CommandsToRun[UnityEngine.Random.Range(0, _config.CommandsToRun.Count)];
@@ -144,7 +151,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            if (_config.DisablePowerOutput)
+            if (_config.DisablePowerOutputOnPress)
                 return true;
             else
                 return null;
