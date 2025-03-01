@@ -12,7 +12,7 @@ using System.Collections.Generic;
 namespace Oxide.Plugins
 {
     [Info("Button Commands", "VisEntities", "1.0.0")]
-    [Description(" ")]
+    [Description("Runs commands when an electric button is pressed.")]
     public class ButtonCommands : RustPlugin
     {
         #region Fields
