@@ -14,7 +14,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Button Commands", "VisEntities", "2.0.0")]
+    [Info("Button Commands", "VisEntities", "2.1.0")]
     [Description("Run commands when an electric button is pressed.")]
     public class ButtonCommands : RustPlugin
     {
@@ -22,6 +22,7 @@ namespace Oxide.Plugins
 
         private static ButtonCommands _plugin;
         private StoredData _storedData;
+        private readonly Dictionary<ulong, Dictionary<ulong, float>> _lastPressTimesByButtonAndPlayer = new Dictionary<ulong, Dictionary<ulong, float>>();
 
         #endregion Fields
 
@@ -43,6 +44,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Run Random Command")]
             public bool RunRandomCommand { get; set; }
+
+            [JsonProperty("Cooldown Seconds")]
+            public float CooldownSeconds { get; set; }
 
             [JsonProperty("Commands")]
             public List<CommandData> Commands { get; set; } = new List<CommandData>();
@@ -71,6 +75,7 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
+            _lastPressTimesByButtonAndPlayer.Clear();
             _plugin = null;
         }
 
@@ -83,25 +88,53 @@ namespace Oxide.Plugins
             if (!_storedData.PressButtons.ContainsKey(buttonId))
                 return null;
 
-            ButtonData btnData = _storedData.PressButtons[buttonId];
+            ButtonData buttonData = _storedData.PressButtons[buttonId];
 
-            if (btnData.RequireButtonPowered && !button.IsOn())
+            if (buttonData.RequireButtonPowered && !button.IsOn())
                 return null;
 
-            if (btnData.RunRandomCommand && btnData.Commands.Count > 0)
+            if (buttonData.CooldownSeconds > 0f)
             {
-                var cmd = btnData.Commands[UnityEngine.Random.Range(0, btnData.Commands.Count)];
+                Dictionary<ulong, float> lastPressByPlayer;
+                bool hasMap = _lastPressTimesByButtonAndPlayer.TryGetValue(buttonId, out lastPressByPlayer);
+                if (!hasMap)
+                {
+                    lastPressByPlayer = new Dictionary<ulong, float>();
+                    _lastPressTimesByButtonAndPlayer[buttonId] = lastPressByPlayer;
+                }
+
+                float lastPressTime;
+                bool hasTime = lastPressByPlayer.TryGetValue(player.userID, out lastPressTime);
+                if (hasTime)
+                {
+                    float now = Time.realtimeSinceStartup;
+                    float elapsed = now - lastPressTime;
+                    if (elapsed < buttonData.CooldownSeconds)
+                    {
+                        int remaining = Mathf.CeilToInt(buttonData.CooldownSeconds - elapsed);
+                        string pretty = FormatDuration(remaining);
+                        ReplyToPlayer(player, Lang.OnCooldown, pretty);
+                        return null;
+                    }
+                }
+
+                lastPressByPlayer[player.userID] = Time.realtimeSinceStartup;
+            }
+
+            if (buttonData.RunRandomCommand && buttonData.Commands.Count > 0)
+            {
+                var cmd = buttonData.Commands[UnityEngine.Random.Range(0, buttonData.Commands.Count)];
                 RunCommand(player, cmd.Type, cmd.Command);
             }
             else
             {
-                foreach (var cmd in btnData.Commands)
+                foreach (var cmd in buttonData.Commands)
                 {
                     RunCommand(player, cmd.Type, cmd.Command);
                 }
             }
 
-            if (btnData.DisablePowerOutputOnPress)
+            if (buttonData.DisablePowerOutputOnPress)
                 return true;
             else
                 return null;
@@ -206,6 +239,31 @@ namespace Oxide.Plugins
 
         #endregion Helper Classes
 
+        #region Helper Functions
+
+        private static string FormatDuration(int totalSeconds)
+        {
+            if (totalSeconds <= 0)
+                return "0s";
+
+            int hours = totalSeconds / 3600;
+            int minutes = (totalSeconds % 3600) / 60;
+            int seconds = totalSeconds % 60;
+
+            List<string> parts = new List<string>();
+
+            if (hours > 0)
+                parts.Add(hours.ToString() + "h");
+            if (minutes > 0)
+                parts.Add(minutes.ToString() + "m");
+            if (seconds > 0 || parts.Count == 0)
+                parts.Add(seconds.ToString() + "s");
+
+            return string.Join(" ", parts.ToArray());
+        }
+
+        #endregion Helper Functions
+
         #region Enums
 
         public enum CommandType
@@ -245,13 +303,8 @@ namespace Oxide.Plugins
 
         #region Commands
 
-        private static class Cmd
-        {
-            public const string ADD = "bc.add";
-        }
-
-        [ConsoleCommand(Cmd.ADD)]
-        private void cmdAddButton(ConsoleSystem.Arg arg)
+        [ConsoleCommand("bc.add")]
+        private void cmdConsoleAddButton(ConsoleSystem.Arg arg)
         {
             BasePlayer player = arg.Player();
             if (player == null)
@@ -259,7 +312,7 @@ namespace Oxide.Plugins
 
             if (!PermissionUtil.HasPermission(player, PermissionUtil.ADMIN))
             {
-                MessagePlayer(player, Lang.NoPermission);
+                ReplyToPlayer(player, Lang.NoPermission);
                 return;
             }
 
@@ -272,7 +325,7 @@ namespace Oxide.Plugins
                     ulong id = button.net.ID.Value;
                     if (_storedData.PressButtons.ContainsKey(id))
                     {
-                        MessagePlayer(player, Lang.AlreadyRegistered);
+                        ReplyToPlayer(player, Lang.AlreadyRegistered);
                         return;
                     }
                     ButtonData defaultData = new ButtonData
@@ -280,6 +333,7 @@ namespace Oxide.Plugins
                         RequireButtonPowered = true,
                         DisablePowerOutputOnPress = true,
                         RunRandomCommand = false,
+                        CooldownSeconds = 60f,
                         Commands = new List<CommandData>
                         {
                             new CommandData
@@ -301,19 +355,19 @@ namespace Oxide.Plugins
                     };
                     _storedData.PressButtons[id] = defaultData;
                     DataFileUtil.Save(DataFileUtil.GetFilePath(), _storedData);
-                    MessagePlayer(player, Lang.ButtonRegistered);
+                    ReplyToPlayer(player, Lang.ButtonRegistered);
                 }
                 else
                 {
-                    MessagePlayer(player, Lang.NoButtonSight);
+                    ReplyToPlayer(player, Lang.NoButtonSight);
                 }
             }
             else
             {
-                MessagePlayer(player, Lang.NoButtonRange);
+                ReplyToPlayer(player, Lang.NoButtonRange);
             }
         }
-
+        
         #endregion Commands
 
         #region Localization
@@ -325,6 +379,7 @@ namespace Oxide.Plugins
             public const string ButtonRegistered = "ButtonRegistered";
             public const string NoButtonSight = "NoButtonSight";
             public const string NoButtonRange = "NoButtonRange";
+            public const string OnCooldown = "OnCooldown";
         }
 
         protected override void LoadDefaultMessages()
@@ -336,12 +391,19 @@ namespace Oxide.Plugins
                 [Lang.ButtonRegistered] = "Button registered successfully.",
                 [Lang.NoButtonSight] = "No button found in your line of sight.",
                 [Lang.NoButtonRange] = "No button found within range.",
+                [Lang.OnCooldown] = "Please wait {0} before pressing this button again."
             }, this, "en");
         }
 
         private static string GetMessage(BasePlayer player, string messageKey, params object[] args)
         {
-            string message = _plugin.lang.GetMessage(messageKey, _plugin, player.UserIDString);
+            string userId;
+            if (player != null)
+                userId = player.UserIDString;
+            else
+                userId = null;
+
+            string message = _plugin.lang.GetMessage(messageKey, _plugin, userId);
 
             if (args.Length > 0)
                 message = string.Format(message, args);
@@ -349,10 +411,12 @@ namespace Oxide.Plugins
             return message;
         }
 
-        public static void MessagePlayer(BasePlayer player, string messageKey, params object[] args)
+        public static void ReplyToPlayer(BasePlayer player, string messageKey, params object[] args)
         {
             string message = GetMessage(player, messageKey, args);
-            _plugin.SendReply(player, message);
+
+            if (!string.IsNullOrWhiteSpace(message))
+                _plugin.SendReply(player, message);
         }
 
         #endregion Localization
