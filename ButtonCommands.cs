@@ -14,7 +14,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Button Commands", "VisEntities", "2.1.0")]
+    [Info("Button Commands", "VisEntities", "2.2.0")]
     [Description("Run commands when an electric button is pressed.")]
     public class ButtonCommands : RustPlugin
     {
@@ -90,7 +90,7 @@ namespace Oxide.Plugins
 
             ButtonData buttonData = _storedData.PressButtons[buttonId];
 
-            if (buttonData.RequireButtonPowered && !button.IsOn())
+            if (buttonData.RequireButtonPowered && !button.IsPowered())
                 return null;
 
             if (buttonData.CooldownSeconds > 0f)
@@ -113,7 +113,7 @@ namespace Oxide.Plugins
                     {
                         int remaining = Mathf.CeilToInt(buttonData.CooldownSeconds - elapsed);
                         string pretty = FormatDuration(remaining);
-                        ReplyToPlayer(player, Lang.OnCooldown, pretty);
+                        ReplyToPlayer(player, Lang.Error_CooldownActive, pretty);
                         return null;
                     }
                 }
@@ -312,7 +312,7 @@ namespace Oxide.Plugins
 
             if (!PermissionUtil.HasPermission(player, PermissionUtil.ADMIN))
             {
-                ReplyToPlayer(player, Lang.NoPermission);
+                ReplyToPlayer(player, Lang.Error_NoPermission);
                 return;
             }
 
@@ -325,7 +325,7 @@ namespace Oxide.Plugins
                     ulong id = button.net.ID.Value;
                     if (_storedData.PressButtons.ContainsKey(id))
                     {
-                        ReplyToPlayer(player, Lang.AlreadyRegistered);
+                        ReplyToPlayer(player, Lang.Error_AlreadyRegistered);
                         return;
                     }
                     ButtonData defaultData = new ButtonData
@@ -355,43 +355,43 @@ namespace Oxide.Plugins
                     };
                     _storedData.PressButtons[id] = defaultData;
                     DataFileUtil.Save(DataFileUtil.GetFilePath(), _storedData);
-                    ReplyToPlayer(player, Lang.ButtonRegistered);
+                    ReplyToPlayer(player, Lang.Info_ButtonRegistered);
                 }
                 else
                 {
-                    ReplyToPlayer(player, Lang.NoButtonSight);
+                    ReplyToPlayer(player, Lang.Error_NoButtonInSight);
                 }
             }
             else
             {
-                ReplyToPlayer(player, Lang.NoButtonRange);
+                ReplyToPlayer(player, Lang.Error_NoButtonInRange);
             }
         }
-        
+
         #endregion Commands
 
         #region Localization
 
         private class Lang
         {
-            public const string NoPermission = "NoPermission";
-            public const string AlreadyRegistered = "AlreadyRegistered";
-            public const string ButtonRegistered = "ButtonRegistered";
-            public const string NoButtonSight = "NoButtonSight";
-            public const string NoButtonRange = "NoButtonRange";
-            public const string OnCooldown = "OnCooldown";
+            public const string Error_NoPermission = "Error.NoPermission";
+            public const string Error_AlreadyRegistered = "Error.AlreadyRegistered";
+            public const string Error_NoButtonInSight = "Error.NoButtonInSight";
+            public const string Error_NoButtonInRange = "Error.NoButtonInRange";
+            public const string Error_CooldownActive = "Error.CooldownActive";
+            public const string Info_ButtonRegistered = "Info.ButtonRegistered";
         }
 
         protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                [Lang.NoPermission] = "You do not have permission to use this command.",
-                [Lang.AlreadyRegistered] = "This button is already registered.",
-                [Lang.ButtonRegistered] = "Button registered successfully.",
-                [Lang.NoButtonSight] = "No button found in your line of sight.",
-                [Lang.NoButtonRange] = "No button found within range.",
-                [Lang.OnCooldown] = "Please wait {0} before pressing this button again."
+                [Lang.Error_NoPermission] = "You do not have permission to use this command.",
+                [Lang.Error_AlreadyRegistered] = "This button already has commands assigned.",
+                [Lang.Error_NoButtonInSight] = "You must be looking directly at a button to register it.",
+                [Lang.Error_NoButtonInRange] = "You are too far away from the button to register it.",
+                [Lang.Error_CooldownActive] = "You must wait {0} before using this button again.",
+                [Lang.Info_ButtonRegistered] = "Button registered successfully. It will now run the assigned commands."
             }, this, "en");
         }
 
